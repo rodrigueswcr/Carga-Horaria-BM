@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Escala Policial</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+:root{
+ --prim:#1a237e;
+ --bg:#f4f6f8;
+ --card:#ffffff;
+ --text:#000;
+ --border:#999;
+}
+.dark{
+ --prim:#0d47a1;
+ --bg:#121212;
+ --card:#1e1e1e;
+ --text:#fff;
+ --border:#444;
+}
+body{margin:0;font-family:Arial;background:var(--bg);color:var(--text);}
+header{background:var(--prim);color:#fff;padding:14px;font-size:18px;display:flex;justify-content:space-between;}
+.container{padding:10px}
+.card{background:var(--card);border-radius:8px;padding:10px;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,.15);}
+select,input,button{padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);}
+button{background:var(--prim);color:#fff;border:none;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th,td{border:1px solid var(--border);padding:4px;text-align:center;}
+th{background:#e0e0e0}
+.resumo{display:flex;gap:10px;}
+.resumo div{flex:1;text-align:center;font-weight:bold;}
+.valor{color:#2e7d32}
+</style>
+</head>
+
+<body>
+
+<header>
+📋 Escala Policial
+<span onclick="toggleDark()">🌙</span>
+</header>
+
+<div class="container">
+
+<div class="card">
+<select id="mes"></select>
+<input type="number" id="ano">
+<button onclick="gerar()">Gerar</button>
+<button onclick="gerarPDF()">📄 PDF</button>
+</div>
+
+<div class="card">
+<table>
+<thead>
+<tr>
+<th>Dia</th><th>Semana</th><th>Turno</th><th>Horário</th><th>Horas</th>
+</tr>
+</thead>
+<tbody id="dias"></tbody>
+</table>
+</div>
+
+<div class="card resumo">
+<div>Total<br><span id="total">0</span></div>
+<div>Extras<br><span id="extras">0</span></div>
+<div>Valor<br><span class="valor">R$ <span id="valor">0,00</span></span></div>
+</div>
+
+<div class="card">
+<b>Legendas</b><br>
+1=00–06 | 2=06–12 | 3=12–18 | 4=18–00<br>
+TRÂ = Trânsito (6h)<br>
+F, FE, RSP, INS, DFIN, DPG = Dispensa
+</div>
+
+</div>
+
+<script>
+const { jsPDF } = window.jspdf;
+const semana=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+const valorHora=46.37;
+const turnosHora={1:["00","06"],2:["06","12"],3:["12","18"],4:["18","24"]};
+const zerados=["F","FE","RSP","INS","DFIN","DPG"];
+const key="escala_policial_dados";
+
+/* INIT */
+(function init(){
+ const meses=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+ meses.forEach((m,i)=>mes.innerHTML+=`<option value="${i}">${m}</option>`);
+ ano.value=new Date().getFullYear();
+ carregar();
+})();
+
+function toggleDark(){document.body.classList.toggle("dark");}
+
+function gerar(){
+ dias.innerHTML="";
+ let m=mes.value,a=ano.value;
+ let ult=new Date(a,Number(m)+1,0).getDate();
+ let dados=carregarDados()?.turnos||{};
+
+ for(let d=1;d<=ult;d++){
+  let dt=new Date(a,m,d);
+  let v=dados[d]||"";
+  dias.innerHTML+=`
+  <tr>
+   <td>${d}</td>
+   <td>${semana[dt.getDay()]}</td>
+   <td>
+    <select onchange="atualizar(this,${d})">
+     <option></option>
+     <option ${v=="1"?"selected":""}>1</option>
+     <option ${v=="2"?"selected":""}>2</option>
+     <option ${v=="3"?"selected":""}>3</option>
+     <option ${v=="4"?"selected":""}>4</option>
+     <option ${v=="12"?"selected":""}>12</option>
+     <option ${v=="23"?"selected":""}>23</option>
+     <option ${v=="34"?"selected":""}>34</option>
+     <option ${v=="41"?"selected":""}>41</option>
+     <option ${v=="123"?"selected":""}>123</option>
+     <option ${v=="234"?"selected":""}>234</option>
+     <option ${v=="1234"?"selected":""}>1234</option>
+     <option ${v=="TRÂ"?"selected":""}>TRÂ</option>
+     <option ${v=="F"?"selected":""}>F</option>
+     <option ${v=="FE"?"selected":""}>FE</option>
+     <option ${v=="RSP"?"selected":""}>RSP</option>
+     <option ${v=="INS"?"selected":""}>INS</option>
+     <option ${v=="DFIN"?"selected":""}>DFIN</option>
+     <option ${v=="DPG"?"selected":""}>DPG</option>
+    </select>
+   </td>
+   <td class="horario"></td>
+   <td class="horas">0</td>
+  </tr>`;
+ }
+ document.querySelectorAll("select").forEach(s=>s.onchange());
+}
+
+function atualizar(sel,dia){
+ let tr=sel.closest("tr");
+ let h=tr.querySelector(".horario");
+ let hrsEl=tr.querySelector(".horas");
+ let v=sel.value;
+ let hrs=0;
+
+ if(v==="TRÂ"){h.textContent="Trânsito";hrs=6;}
+ else if(zerados.includes(v)){h.textContent="-";hrs=0;}
+ else if(v){
+  let ini=turnosHora[v[0]][0];
+  let fim=turnosHora[v[v.length-1]][1];
+  h.textContent=`${ini}h às ${fim}h`;
+  hrs=v.length*6;
+ }
+
+ hrsEl.textContent=hrs;
+ salvar(dia,v);
+ calcular();
+}
+
+function calcular(){
+ let totalH=0;
+ document.querySelectorAll(".horas").forEach(h=>totalH+=Number(h.textContent));
+ let base=document.querySelectorAll("#dias tr").length==31?177:171;
+ let extra=Math.max(0,totalH-base);
+ total.textContent=totalH;
+ extras.textContent=extra;
+ valor.textContent=(extra*valorHora).toFixed(2);
+}
+
+function salvar(dia,turno){
+ let dados=carregarDados()||{mes:mes.value,ano:ano.value,turnos:{}};
+ dados.mes=mes.value;dados.ano=ano.value;
+ dados.turnos[dia]=turno;
+ localStorage.setItem(key,JSON.stringify(dados));
+}
+
+function carregarDados(){
+ return JSON.parse(localStorage.getItem(key));
+}
+
+function carregar(){
+ let d=carregarDados();
+ if(!d) return gerar();
+ mes.value=d.mes;
+ ano.value=d.ano;
+ gerar();
+}
+
+/* PDF */
+function gerarPDF(){
+ const pdf=new jsPDF();
+ let y=20;
+ pdf.setFont("helvetica","bold");
+ pdf.text("RELATÓRIO MENSAL DE ESCALA POLICIAL",105,y,{align:"center"});
+ y+=10;
+ pdf.setFont("helvetica","normal");
+ pdf.text(`${mes.options[mes.selectedIndex].text}/${ano.value}`,105,y,{align:"center"});
+ y+=10;
+
+ document.querySelectorAll("#dias tr").forEach(tr=>{
+  if(y>280){pdf.addPage();y=20;}
+  let td=tr.children;
+  pdf.text(`${td[0].innerText}  ${td[1].innerText}  ${td[2].querySelector("select").value}  ${td[3].innerText}  ${td[4].innerText}h`,10,y);
+  y+=6;
+ });
+
+ pdf.text(`Total: ${total.innerText}h`,10,y+10);
+ pdf.save("escala_policial.pdf");
+}
+</script>
+
+</body>
+</html>
