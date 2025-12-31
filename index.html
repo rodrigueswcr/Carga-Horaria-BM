@@ -1,214 +1,195 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Escala Policial</title>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
 <style>
-:root{
- --prim:#1a237e;
- --bg:#f4f6f8;
- --card:#ffffff;
- --text:#000;
- --border:#999;
+*{box-sizing:border-box}
+
+body{
+ margin:0;
+ font-family:Arial, sans-serif;
+ background:#121212;
+ color:#fff;
+ padding-top:env(safe-area-inset-top);
 }
-.dark{
- --prim:#0d47a1;
- --bg:#121212;
- --card:#1e1e1e;
- --text:#fff;
- --border:#444;
+
+header{
+ background:#0d47a1;
+ padding:16px;
+ text-align:center;
+ font-size:20px;
+ font-weight:bold;
+ margin-top:10px;
 }
-body{margin:0;font-family:Arial;background:var(--bg);color:var(--text);}
-header{background:var(--prim);color:#fff;padding:14px;font-size:18px;display:flex;justify-content:space-between;}
-.container{padding:10px}
-.card{background:var(--card);border-radius:8px;padding:10px;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,.15);}
-select,input,button{padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);}
-button{background:var(--prim);color:#fff;border:none;}
-table{width:100%;border-collapse:collapse;font-size:12px;}
-th,td{border:1px solid var(--border);padding:4px;text-align:center;}
-th{background:#e0e0e0}
-.resumo{display:flex;gap:10px;}
-.resumo div{flex:1;text-align:center;font-weight:bold;}
-.valor{color:#2e7d32}
+
+.top-controls{
+ display:flex;
+ gap:8px;
+ padding:12px;
+ flex-wrap:wrap;
+}
+
+select,input,button{
+ padding:8px;
+ border-radius:6px;
+ border:none;
+ font-size:14px;
+}
+
+button{
+ background:#1976d2;
+ color:#fff;
+}
+
+table{
+ width:100%;
+ border-collapse:collapse;
+}
+
+th,td{
+ border:1px solid #333;
+ padding:6px;
+ text-align:center;
+}
+
+th{
+ background:#1e1e1e;
+}
+
+input.horario{
+ width:100%;
+ background:#1e1e1e;
+ color:#fff;
+ border:1px solid #444;
+ padding:6px;
+}
 </style>
 </head>
 
 <body>
 
-<header>
-📋 Escala Policial
-<span onclick="toggleDark()">🌙</span>
-</header>
+<header>📋 Escala Policial</header>
 
-<div class="container">
-
-<div class="card">
-<select id="mes"></select>
-<input type="number" id="ano">
-<button onclick="gerar()">Gerar</button>
-<button onclick="gerarPDF()">📄 PDF</button>
+<div class="top-controls">
+ <select id="mes"></select>
+ <input type="number" id="ano" value="2025">
+ <button onclick="gerarDias()">Gerar</button>
+ <button onclick="gerarPDF()">PDF</button>
 </div>
 
-<div class="card">
 <table>
 <thead>
 <tr>
-<th>Dia</th><th>Semana</th><th>Turno</th><th>Horário</th><th>Horas</th>
+ <th>Dia</th>
+ <th>Semana</th>
+ <th>Turno</th>
+ <th>Horário</th>
+ <th>Horas</th>
 </tr>
 </thead>
 <tbody id="dias"></tbody>
 </table>
-</div>
 
-<div class="card resumo">
-<div>Total<br><span id="total">0</span></div>
-<div>Extras<br><span id="extras">0</span></div>
-<div>Valor<br><span class="valor">R$ <span id="valor">0,00</span></span></div>
-</div>
-
-<div class="card">
-<b>Legendas</b><br>
-1=00–06 | 2=06–12 | 3=12–18 | 4=18–00<br>
-TRÂ = Trânsito (6h)<br>
-F, FE, RSP, INS, DFIN, DPG = Dispensa
-</div>
-
-</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
-const { jsPDF } = window.jspdf;
-const semana=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
-const valorHora=46.37;
-const turnosHora={1:["00","06"],2:["06","12"],3:["12","18"],4:["18","24"]};
-const zerados=["F","FE","RSP","INS","DFIN","DPG"];
-const key="escala_policial_dados";
+const meses=[
+ "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+ "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
+];
 
-/* INIT */
-(function init(){
- const meses=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
- meses.forEach((m,i)=>mes.innerHTML+=`<option value="${i}">${m}</option>`);
- ano.value=new Date().getFullYear();
- carregar();
-})();
+const mesSelect=document.getElementById("mes");
+meses.forEach((m,i)=>{
+ let o=document.createElement("option");
+ o.value=i; o.text=m;
+ mesSelect.add(o);
+});
 
-function toggleDark(){document.body.classList.toggle("dark");}
+function gerarDias(){
+ const tbody=document.getElementById("dias");
+ tbody.innerHTML="";
 
-function gerar(){
- dias.innerHTML="";
- let m=mes.value,a=ano.value;
- let ult=new Date(a,Number(m)+1,0).getDate();
- let dados=carregarDados()?.turnos||{};
+ const ano=document.getElementById("ano").value;
+ const mes=mesSelect.value;
+ const totalDias=new Date(ano,parseInt(mes)+1,0).getDate();
 
- for(let d=1;d<=ult;d++){
-  let dt=new Date(a,m,d);
-  let v=dados[d]||"";
-  dias.innerHTML+=`
-  <tr>
+ for(let d=1;d<=totalDias;d++){
+  const data=new Date(ano,mes,d);
+  const semana=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][data.getDay()];
+
+  const tr=document.createElement("tr");
+  tr.innerHTML=`
    <td>${d}</td>
-   <td>${semana[dt.getDay()]}</td>
+   <td>${semana}</td>
    <td>
-    <select onchange="atualizar(this,${d})">
+    <select onchange="atualizarLinha(this)">
      <option></option>
-     <option ${v=="1"?"selected":""}>1</option>
-     <option ${v=="2"?"selected":""}>2</option>
-     <option ${v=="3"?"selected":""}>3</option>
-     <option ${v=="4"?"selected":""}>4</option>
-     <option ${v=="12"?"selected":""}>12</option>
-     <option ${v=="23"?"selected":""}>23</option>
-     <option ${v=="34"?"selected":""}>34</option>
-     <option ${v=="41"?"selected":""}>41</option>
-     <option ${v=="123"?"selected":""}>123</option>
-     <option ${v=="234"?"selected":""}>234</option>
-     <option ${v=="1234"?"selected":""}>1234</option>
-     <option ${v=="TRÂ"?"selected":""}>TRÂ</option>
-     <option ${v=="F"?"selected":""}>F</option>
-     <option ${v=="FE"?"selected":""}>FE</option>
-     <option ${v=="RSP"?"selected":""}>RSP</option>
-     <option ${v=="INS"?"selected":""}>INS</option>
-     <option ${v=="DFIN"?"selected":""}>DFIN</option>
-     <option ${v=="DPG"?"selected":""}>DPG</option>
+     <option>1</option>
+     <option>2</option>
+     <option>3</option>
+     <option>4</option>
+     <option>TRÂ</option>
+     <option>APRE</option>
+     <option>F</option>
     </select>
    </td>
-   <td class="horario"></td>
+   <td><input class="horario" placeholder="Auto ou editável"></td>
    <td class="horas">0</td>
-  </tr>`;
+  `;
+  tbody.appendChild(tr);
  }
- document.querySelectorAll("select").forEach(s=>s.onchange());
 }
 
-function atualizar(sel,dia){
- let tr=sel.closest("tr");
- let h=tr.querySelector(".horario");
- let hrsEl=tr.querySelector(".horas");
- let v=sel.value;
- let hrs=0;
+function atualizarLinha(select){
+ const linha=select.closest("tr");
+ const campoHorario=linha.querySelector(".horario");
+ const campoHoras=linha.querySelector(".horas");
+ const turno=select.value;
 
- if(v==="TRÂ"){h.textContent="Trânsito";hrs=6;}
- else if(zerados.includes(v)){h.textContent="-";hrs=0;}
- else if(v){
-  let ini=turnosHora[v[0]][0];
-  let fim=turnosHora[v[v.length-1]][1];
-  h.textContent=`${ini}h às ${fim}h`;
-  hrs=v.length*6;
+ let horas=0;
+ let horario="";
+
+ // Turnos combinados (41, 34, 23…)
+ if(/^[1-4]{2,}$/.test(turno)){
+  horas=turno.length*6;
+  const mapa={1:"00h",2:"06h",3:"12h",4:"18h"};
+  horario=`${mapa[turno[0]]} às ${mapa[turno[turno.length-1]]}`;
  }
+ else if(turno==="1"){horario="00h às 06h";horas=6;}
+ else if(turno==="2"){horario="06h às 12h";horas=6;}
+ else if(turno==="3"){horario="12h às 18h";horas=6;}
+ else if(turno==="4"){horario="18h às 00h";horas=6;}
+ else if(turno==="TRÂ"){horario="Trânsito";horas=6;}
+ else if(turno==="APRE"){horario="APRE";horas=0;}
+ else if(turno==="F"){horario="Folga";horas=0;}
 
- hrsEl.textContent=hrs;
- salvar(dia,v);
- calcular();
+ campoHorario.value=horario;
+ campoHoras.innerText=horas;
 }
 
-function calcular(){
- let totalH=0;
- document.querySelectorAll(".horas").forEach(h=>totalH+=Number(h.textContent));
- let base=document.querySelectorAll("#dias tr").length==31?177:171;
- let extra=Math.max(0,totalH-base);
- total.textContent=totalH;
- extras.textContent=extra;
- valor.textContent=(extra*valorHora).toFixed(2);
-}
-
-function salvar(dia,turno){
- let dados=carregarDados()||{mes:mes.value,ano:ano.value,turnos:{}};
- dados.mes=mes.value;dados.ano=ano.value;
- dados.turnos[dia]=turno;
- localStorage.setItem(key,JSON.stringify(dados));
-}
-
-function carregarDados(){
- return JSON.parse(localStorage.getItem(key));
-}
-
-function carregar(){
- let d=carregarDados();
- if(!d) return gerar();
- mes.value=d.mes;
- ano.value=d.ano;
- gerar();
-}
-
-/* PDF */
 function gerarPDF(){
- const pdf=new jsPDF();
- let y=20;
- pdf.setFont("helvetica","bold");
- pdf.text("RELATÓRIO MENSAL DE ESCALA POLICIAL",105,y,{align:"center"});
- y+=10;
- pdf.setFont("helvetica","normal");
- pdf.text(`${mes.options[mes.selectedIndex].text}/${ano.value}`,105,y,{align:"center"});
- y+=10;
+ const {jsPDF}=window.jspdf;
+ const pdf=new jsPDF("p","mm","a4");
+
+ pdf.setFontSize(16);
+ pdf.text("RELATÓRIO DE ESCALA POLICIAL",105,15,{align:"center"});
+
+ let y=25;
+ pdf.setFontSize(10);
 
  document.querySelectorAll("#dias tr").forEach(tr=>{
   if(y>280){pdf.addPage();y=20;}
-  let td=tr.children;
-  pdf.text(`${td[0].innerText}  ${td[1].innerText}  ${td[2].querySelector("select").value}  ${td[3].innerText}  ${td[4].innerText}h`,10,y);
+  const c=tr.children;
+  pdf.text(
+   `${c[0].innerText} ${c[1].innerText} | Turno: ${c[2].innerText} | ${c[3].children[0].value} | ${c[4].innerText}h`,
+   10,y
+  );
   y+=6;
  });
 
- pdf.text(`Total: ${total.innerText}h`,10,y+10);
  pdf.save("escala_policial.pdf");
 }
 </script>
