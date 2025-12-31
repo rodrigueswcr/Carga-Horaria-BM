@@ -67,7 +67,6 @@ input.horario{
  padding:6px;
 }
 
-/* Rodapé */
 .footer-box{
  margin:16px;
  padding:12px;
@@ -112,7 +111,6 @@ input.horario{
 <tbody id="dias"></tbody>
 </table>
 
-<!-- RESUMO -->
 <div class="footer-box">
  <h3>📊 Resumo Mensal</h3>
  <p><b>Carga Horária:</b> <span id="totalHoras">0</span> h</p>
@@ -120,27 +118,28 @@ input.horario{
  <p><b>Pecúnia Extra:</b> R$ <span id="valorExtra">0,00</span></p>
 </div>
 
-<!-- LEGENDAS -->
 <div class="footer-box">
  <h3>📌 Legendas</h3>
  <div class="legend">
-  FER – Férias<br>
-  FOL – Folga<br>
-  APR – Apresentação<br>
-  TRÂ – Trânsito<br>
-  INS – Instalação<br>
-  LUT – Luto<br>
-  NUP – Núpcias<br>
-  DIM – Dispensa Médica<br>
-  RSP – Dispensa por Recompensa<br>
-  TAF – Teste Aptidão Física<br>
-  SAU – Inspeção de Saúde
+ FER – Férias<br>
+ FOL – Folga<br>
+ APR – Apresentação<br>
+ TRÂ – Trânsito<br>
+ INS – Instrução<br>
+ LUT – Luto<br>
+ NUP – Núcleo Psicossocial<br>
+ DIM – Diminuição<br>
+ RSP – Resposta<br>
+ TAF – Teste Aptidão Física<br>
+ SAU – Saúde
  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
+const STORAGE_KEY="escala_policial_dados";
+
 const meses=["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
 "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
@@ -152,13 +151,43 @@ meses.forEach((m,i)=>{
 });
 
 const turnosHoras={"1":6,"2":6,"3":6,"4":6,"23":12,"34":12,"41":12};
-
 const horariosPadrao={
  "1":"00h às 06h","2":"06h às 12h","3":"12h às 18h","4":"18h às 00h",
  "23":"06h às 18h","34":"12h às 00h","41":"18h às 06h"
 };
-
 const legendas=["FER","FOL","APR","TRÂ","INS","LUT","NUP","DIM","RSP","TAF","SAU"];
+
+function salvarDados(){
+ const dados={
+  mes:mesSelect.value,
+  ano:document.getElementById("ano").value,
+  linhas:[...document.querySelectorAll("#dias tr")].map(tr=>{
+   return {
+    turno:tr.children[2].querySelector("select").value,
+    horario:tr.children[3].querySelector("input").value,
+    horas:tr.children[4].innerText
+   }
+  })
+ };
+ localStorage.setItem(STORAGE_KEY,JSON.stringify(dados));
+}
+
+function carregarDados(){
+ const dados=JSON.parse(localStorage.getItem(STORAGE_KEY));
+ if(!dados) return;
+
+ mesSelect.value=dados.mes;
+ document.getElementById("ano").value=dados.ano;
+ gerarDias();
+
+ document.querySelectorAll("#dias tr").forEach((tr,i)=>{
+  if(!dados.linhas[i]) return;
+  tr.children[2].querySelector("select").value=dados.linhas[i].turno;
+  tr.children[3].querySelector("input").value=dados.linhas[i].horario;
+  tr.children[4].innerText=dados.linhas[i].horas;
+ });
+ calcularTotais();
+}
 
 function gerarDias(){
  const tbody=document.getElementById("dias");
@@ -170,23 +199,22 @@ function gerarDias(){
  for(let d=1;d<=totalDias;d++){
   const data=new Date(ano,mes,d);
   const semana=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][data.getDay()];
-
   let options=`<option></option>
   <option>1</option><option>2</option><option>3</option><option>4</option>
   <option>23</option><option>34</option><option>41</option>`;
-
   legendas.forEach(l=>options+=`<option>${l}</option>`);
 
   const tr=document.createElement("tr");
   tr.innerHTML=`
    <td>${d}</td>
    <td>${semana}</td>
-   <td><select onchange="atualizarLinha(this)">${options}</select></td>
-   <td><input class="horario"></td>
+   <td><select onchange="atualizarLinha(this);salvarDados()">${options}</select></td>
+   <td><input class="horario" oninput="calcularHorasManual(this);salvarDados()"></td>
    <td class="horas">0</td>`;
   tbody.appendChild(tr);
  }
  calcularTotais();
+ salvarDados();
 }
 
 function atualizarLinha(select){
@@ -196,32 +224,32 @@ function atualizarLinha(select){
  const valor=select.value;
 
  if(turnosHoras[valor]){
-  campoHoras.innerText=turnosHoras[valor];
   campoHorario.value=horariosPadrao[valor];
- }else{
-  campoHoras.innerText=0;
-  campoHorario.value=valor;
+  campoHoras.innerText=turnosHoras[valor];
  }
+ calcularTotais();
+}
+
+function calcularHorasManual(input){
+ const linha=input.closest("tr");
+ const campoHoras=linha.querySelector(".horas");
+ const m=input.value.match(/(\d{1,2})h?\s*às\s*(\d{1,2})h?/i);
+ if(!m){campoHoras.innerText=0;return;}
+
+ let ini=parseInt(m[1]),fim=parseInt(m[2]);
+ campoHoras.innerText=fim>ini?fim-ini:(24-ini)+fim;
  calcularTotais();
 }
 
 function calcularTotais(){
  let total=0;
- document.querySelectorAll(".horas").forEach(h=>{
-  total+=parseInt(h.innerText)||0;
- });
-
- const mes=mesSelect.value;
- const ano=document.getElementById("ano").value;
- const diasMes=new Date(ano,parseInt(mes)+1,0).getDate();
- const limite=diasMes===31?177:171;
-
+ document.querySelectorAll(".horas").forEach(h=>total+=parseInt(h.innerText)||0);
+ const dias=new Date(document.getElementById("ano").value,parseInt(mesSelect.value)+1,0).getDate();
+ const limite=dias===31?177:171;
  const extra=Math.max(0,total-limite);
- const valor=(extra*46.37).toFixed(2).replace(".",",");
-
  document.getElementById("totalHoras").innerText=total;
  document.getElementById("horaExtra").innerText=extra;
- document.getElementById("valorExtra").innerText=valor;
+ document.getElementById("valorExtra").innerText=(extra*46.37).toFixed(2).replace(".",",");
 }
 
 function gerarPDF(){
@@ -237,6 +265,8 @@ function gerarPDF(){
  });
  pdf.save("escala_policial.pdf");
 }
+
+window.onload=carregarDados;
 </script>
 
 </body>
